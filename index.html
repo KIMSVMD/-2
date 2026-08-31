@@ -8,8 +8,9 @@
 <!-- 차트 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
-<!-- Firebase (Realtime Database) - 다음 단계에서 사용. 지금은 샘플 데이터로 동작합니다. -->
+<!-- Firebase (인증 + Realtime Database) -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 
 <style>
@@ -350,10 +351,70 @@
     .tx-form .col-2{grid-column:span 1}
     .fx-summary,.fx-summary.cols-4{grid-template-columns:1fr}
   }
+
+  /* ---------- 로그인 화면 ---------- */
+  .lock{
+    position:fixed;inset:0;z-index:1000;
+    display:flex;align-items:center;justify-content:center;padding:24px;
+    background:linear-gradient(160deg,#eef1f7,#e3e9f6);
+  }
+  .lock-card{
+    width:100%;max-width:360px;background:var(--surface);
+    border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:0 10px 40px rgba(30,42,74,.14);
+    padding:34px 28px;text-align:center;
+  }
+  .lock-card .logo{
+    width:64px;height:64px;border-radius:50%;margin:0 auto 14px;
+    border:2px solid #dfe4ef;display:flex;align-items:center;justify-content:center;
+    font-size:30px;background:#f7f9fc;
+  }
+  .lock-card h1{font-size:19px;font-weight:800;letter-spacing:-.3px}
+  .lock-card p{font-size:12.5px;color:var(--ink-soft);margin-top:4px}
+  .lock-form{display:flex;flex-direction:column;gap:10px;margin-top:22px;text-align:left}
+  .lock-form label{font-size:12px;font-weight:700;color:var(--ink-soft)}
+  .lock-form input{
+    width:100%;padding:11px 12px;border:1px solid #d9dfea;border-radius:10px;
+    font:inherit;color:var(--ink);background:#fff;
+  }
+  .lock-form input:focus{outline:2px solid #c9d9f8;border-color:#9db8ee}
+  .lock-form .btn-primary{width:100%;padding:11px;margin-top:4px}
+  .lock-msg{min-height:18px;font-size:12px;font-weight:700;color:var(--coral);margin-top:8px}
+  .lock-alt{margin-top:14px;font-size:12px;color:var(--ink-faint)}
+  .lock-alt button{background:none;border:none;color:var(--blue);font:inherit;font-weight:700;cursor:pointer;padding:0}
+  .lock-email.hidden{display:none}
+  .app.locked{display:none}
+
+  .side-foot{margin-top:auto;padding-top:10px;border-top:1px solid var(--line)}
+  .side-foot .who{font-size:11px;color:var(--ink-faint);font-weight:600;margin-bottom:8px;word-break:break-all}
+  .side-foot .btn{width:100%;padding:8px;font-size:12px}
 </style>
 </head>
 <body>
-<div class="app">
+
+<!-- ===================== 로그인 화면 ===================== -->
+<div class="lock" id="lockScreen" style="display:none">
+  <div class="lock-card">
+    <div class="logo">🐻</div>
+    <h1>우리집 가계부</h1>
+    <p>비밀번호를 입력하면 대시보드로 들어갑니다.</p>
+    <form class="lock-form" id="lockForm" autocomplete="off">
+      <div class="lock-email hidden" id="lockEmailRow">
+        <label for="lockEmail">이메일</label>
+        <input type="email" id="lockEmail" autocomplete="username" />
+      </div>
+      <label for="lockPw">비밀번호</label>
+      <input type="password" id="lockPw" autocomplete="current-password" required autofocus />
+      <button type="submit" class="btn btn-primary" id="lockBtn">들어가기</button>
+      <div class="lock-msg" id="lockMsg"></div>
+    </form>
+    <div class="lock-alt">
+      <button type="button" id="lockToggleEmail">다른 계정으로 로그인</button>
+    </div>
+  </div>
+</div>
+
+<div class="app locked" id="appRoot">
 
   <!-- ===================== 사이드바 ===================== -->
   <aside class="sidebar">
@@ -385,6 +446,11 @@
       <div class="tip-head">💡 TIP</div>
       <p>거래는 '거래입력' 화면에만 입력하면 홈·예산·자산 현황이 모두 자동으로 업데이트됩니다.</p>
       <div class="heart">♥</div>
+    </div>
+
+    <div class="side-foot" id="sideFoot" style="display:none">
+      <div class="who" id="authWho"></div>
+      <button type="button" class="btn" id="logoutBtn">로그아웃</button>
     </div>
   </aside>
 
@@ -1091,7 +1157,8 @@ window.addEventListener("unhandledrejection", e =>
    ---------------------------------------------------------------------
    ▸ firebaseConfig 값을 실제 프로젝트 값으로 채우면 → Realtime Database에 저장
    ▸ 아직 비어 있으면 → 이 브라우저 localStorage에 임시 저장 (UI는 그대로 동작)
-   ▸ Realtime Database 규칙(테스트용): { "rules": { ".read": true, ".write": true } }
+   ▸ Realtime Database 보안 규칙(로그인 사용자만):
+       { "rules": { ".read": "auth != null", ".write": "auth != null" } }
    ▸ 홈 대시보드: 총자산/총부채/순자산은 accounts·loans 데이터로 실계산,
      나머지(현금흐름·예산)는 아직 SAMPLE_DATA(목업) 사용.
    ===================================================================== */
@@ -1109,13 +1176,21 @@ const firebaseConfig = {
   appId: "1:561652054452:web:5340eef455316672e3dae1"
 };
 
+/* 로그인에 사용할 계정의 이메일.
+   ▸ Firebase 콘솔 → Authentication → Sign-in method 에서 "이메일/비밀번호"를 사용 설정하고,
+     Users 탭에서 이 이메일로 사용자를 1개 추가하세요. 비밀번호는 그때 정합니다.
+   ▸ 부부가 각자 계정을 쓰고 싶으면 로그인 화면의 "다른 계정으로 로그인"으로 이메일을 직접 입력할 수 있습니다. */
+const AUTH_EMAIL = "jingyeongv1@gmail.com";
+
 const FB_ENABLED = !!firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY";
 let fbDB = null;
+let fbAuth = null;
 if (FB_ENABLED) {
   try {
     firebase.initializeApp(firebaseConfig);
     fbDB = firebase.database();
-    console.info("[store] Firebase Realtime Database에 연결되었습니다.");
+    try { fbAuth = firebase.auth(); } catch (e) { console.error("[auth] 초기화 실패", e); }
+    console.info("[store] Firebase에 연결되었습니다.");
   } catch (e) {
     console.error("[store] Firebase 초기화 실패 — localStorage로 대체합니다.", e);
   }
@@ -1133,7 +1208,7 @@ const store = {
         snap => cb(snapToArray(snap.val())),
         err => showBanner(
           "Firebase 읽기 실패: " + err.message +
-          "\n→ Firebase 콘솔에서 Realtime Database를 생성했는지, databaseURL이 맞는지, 규칙이 열려있는지 확인하세요."
+          "\n→ 로그인 상태인지, databaseURL이 맞는지, 보안 규칙이 auth != null 로 설정됐는지 확인하세요."
         )
       );
     } else {
@@ -2856,9 +2931,11 @@ function wireCalendarPage(){
 }
 
 /* =====================================================================
-   10. 부트스트랩
+   10. 부트스트랩 (로그인 통과 후 1회 실행)
    ===================================================================== */
-(async function init(){
+let appStarted = false;
+
+async function init(){
   DATA = await loadData();
   selMonth = DATA.meta.selectedMonth || yearMonths(DATA.meta.year)[0];
 
@@ -2885,6 +2962,106 @@ function wireCalendarPage(){
 
   // 카테고리별 월 예산 — 앱 전역에서 사용률 계산에 사용
   store.subscribe(BUD_PATH, items => { budgetItems = items; onBudgetsChanged(); });
+}
+
+function startApp(){
+  if (appStarted) return;
+  appStarted = true;
+  init();
+}
+
+/* =====================================================================
+   11. 로그인 게이트 — Firebase Authentication(이메일/비밀번호)
+   - 로그인 전에는 #lockScreen 만 보이고, 성공하면 대시보드가 나타난다.
+   - RTDB 보안 규칙을 { ".read": "auth != null", ".write": "auth != null" } 로
+     바꾸면, 로그인하지 않은 접속은 데이터를 아예 읽지도 못한다.
+   ===================================================================== */
+function authErrText(err){
+  const c = (err && err.code) || "";
+  if (c === "auth/wrong-password" || c === "auth/invalid-credential" || c === "auth/invalid-login-credentials")
+    return "비밀번호가 올바르지 않습니다.";
+  if (c === "auth/user-not-found")        return "등록되지 않은 계정입니다. Firebase 콘솔 Authentication에서 사용자를 추가하세요.";
+  if (c === "auth/invalid-email")         return "이메일 형식이 올바르지 않습니다.";
+  if (c === "auth/too-many-requests")     return "시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.";
+  if (c === "auth/network-request-failed")return "네트워크 오류입니다. 연결 상태를 확인해 주세요.";
+  if (c === "auth/operation-not-allowed") return "Firebase 콘솔 Authentication → Sign-in method 에서 '이메일/비밀번호'를 사용 설정하세요.";
+  return "로그인에 실패했습니다: " + ((err && err.message) ? err.message : c);
+}
+
+(function authGate(){
+  const lock     = document.getElementById("lockScreen");
+  const appRoot  = document.getElementById("appRoot");
+  const form     = document.getElementById("lockForm");
+  const pwEl     = document.getElementById("lockPw");
+  const emEl     = document.getElementById("lockEmail");
+  const emRow    = document.getElementById("lockEmailRow");
+  const msg      = document.getElementById("lockMsg");
+  const btn      = document.getElementById("lockBtn");
+  const sideFoot = document.getElementById("sideFoot");
+  const authWho  = document.getElementById("authWho");
+
+  // Firebase Auth를 쓸 수 없는 환경(로컬 전용) → 잠금 없이 바로 시작
+  if (!fbAuth){
+    lock.style.display = "none";
+    appRoot.classList.remove("locked");
+    startApp();
+    return;
+  }
+
+  emEl.value = AUTH_EMAIL;
+  lock.style.display = "flex";
+
+  document.getElementById("lockToggleEmail").addEventListener("click", () => {
+    const hidden = emRow.classList.toggle("hidden");
+    if (!hidden) emEl.focus();
+  });
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const email = emRow.classList.contains("hidden")
+      ? AUTH_EMAIL
+      : (emEl.value.trim() || AUTH_EMAIL);
+    const pw = pwEl.value;
+    if (!pw){ pwEl.focus(); return; }
+
+    btn.disabled = true;
+    msg.textContent = "";
+    try {
+      await fbAuth.signInWithEmailAndPassword(email, pw);
+      // 성공하면 onAuthStateChanged가 화면을 전환합니다.
+    } catch (err){
+      msg.textContent = authErrText(err);
+      btn.disabled = false;
+      pwEl.select();
+    }
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", () => {
+    if (confirm("로그아웃할까요?")){
+      fbAuth.signOut().finally(() => location.reload());
+    }
+  });
+
+  fbAuth.onAuthStateChanged(user => {
+    if (user){
+      lock.style.display = "none";
+      appRoot.classList.remove("locked");
+      sideFoot.style.display = "";
+      authWho.textContent = user.email || "로그인됨";
+      btn.disabled = false;
+      pwEl.value = "";
+      msg.textContent = "";
+      startApp();
+    } else if (appStarted){
+      // 세션 만료 / 다른 탭에서 로그아웃 → 깔끔하게 새로고침
+      location.reload();
+    } else {
+      appRoot.classList.add("locked");
+      sideFoot.style.display = "none";
+      lock.style.display = "flex";
+      setTimeout(() => pwEl.focus(), 50);
+    }
+  });
 })();
 </script>
 </body>
