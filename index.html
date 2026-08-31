@@ -93,7 +93,7 @@
   .asof .v{font-size:15px;font-weight:700;margin-top:2px}
 
   /* KPI */
-  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-top:24px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-top:24px}
   .kpi{border-radius:var(--radius);padding:18px 18px 16px;box-shadow:var(--shadow);border:1px solid rgba(255,255,255,.6)}
   .kpi .kpi-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
   .kpi .kpi-ic{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;background:rgba(255,255,255,.7);flex-shrink:0}
@@ -105,6 +105,7 @@
   .kpi.cream{background:#fdf5e2}
   .kpi.pink{background:#fdedf0}
   .kpi.lav{background:#f1edfb}
+  .kpi.sky{background:#e8f1fb}
 
   /* 카드 그리드 */
   .grid-2{
@@ -1159,17 +1160,16 @@ window.addEventListener("unhandledrejection", e =>
    ▸ 아직 비어 있으면 → 이 브라우저 localStorage에 임시 저장 (UI는 그대로 동작)
    ▸ Realtime Database 보안 규칙(로그인 사용자만):
        { "rules": { ".read": "auth != null", ".write": "auth != null" } }
-   ▸ 홈 대시보드: 총자산/총부채/순자산은 accounts·loans 데이터로 실계산,
-     나머지(현금흐름·예산)는 아직 SAMPLE_DATA(목업) 사용.
+   ▸ 홈 대시보드: 목업 없음. 현금흐름·예산·자산·부채·고정비 모두
+     transactions·categoryBudgets·accounts·loans·recurringItems 에서 실시간 계산.
    ===================================================================== */
 
 const firebaseConfig = {
   apiKey: "AIzaSyBnjgIXPwDXiJpnTr9US_LYeut8QxqJPcs",
   authDomain: "house-4e85f.firebaseapp.com",
-  // ⚠️ Realtime Database를 만든 뒤 콘솔에 표시되는 URL로 꼭 바꿔주세요.
-  //   - 서울/싱가포르(asia-southeast1) 선택 시: https://house-4e85f-default-rtdb.asia-southeast1.firebasedatabase.app
-  //   - us-central1 선택 시:                  https://house-4e85f-default-rtdb.firebaseio.com
-  databaseURL: "https://house-4e85f-default-rtdb.asia-southeast1.firebasedatabase.app",
+  // 이 프로젝트의 Realtime Database는 us-central1 리전에 있습니다.
+  // (asia-southeast1 URL로 두면 "Database lives in a different region" 오류로 읽기/쓰기가 전부 실패)
+  databaseURL: "https://house-4e85f-default-rtdb.firebaseio.com",
   projectId: "house-4e85f",
   storageBucket: "house-4e85f.firebasestorage.app",
   messagingSenderId: "561652054452",
@@ -1261,58 +1261,20 @@ function lsWrite(path, data) {
   catch (e) { console.error("[store] localStorage 저장 실패", e); }
 }
 
-const SAMPLE_DATA = {
-  meta: {
-    year: 2025,
-    asOfDate: "2025-08-16",
-    selectedMonth: "2025-08",
-    memos: {
-      "2025-08": "8월에는 불필요한 지출을 줄이고, 저축 목표를 달성해요!"
-    }
-  },
-  // 월별 현금흐름 (잔여금 = 수입 - 지출 - 저축)
-  cashflow: {
-    "2025-01": { income: 5800000, expense: 4450000, saving: 1000000 },
-    "2025-02": { income: 5600000, expense: 4300000, saving: 1000000 },
-    "2025-03": { income: 6100000, expense: 4650000, saving: 1200000 },
-    "2025-04": { income: 6200000, expense: 4900000, saving: 1200000 },
-    "2025-05": { income: 6350000, expense: 4800000, saving: 1500000 },
-    "2025-06": { income: 5950000, expense: 4550000, saving: 1200000 },
-    "2025-07": { income: 6000000, expense: 4700000, saving: 1200000 },
-    "2025-08": { income: 6200000, expense: 4950000, saving: 1200000 }
-  },
-  // 월별 카테고리 예산/지출
-  budgets: {
-    "2025-08": [
-      { category: "주거비",     icon: "🏠", budget: 1200000, spent: 980000 },
-      { category: "식비",       icon: "🍽️", budget: 1000000, spent: 720000 },
-      { category: "교통비",     icon: "🚌", budget: 300000,  spent: 210000 },
-      { category: "통신비",     icon: "📱", budget: 150000,  spent: 150000 },
-      { category: "문화·여가",  icon: "🎬", budget: 300000,  spent: 210000 },
-      { category: "교육·육아",  icon: "🎒", budget: 400000,  spent: 320000 },
-      { category: "의료비",     icon: "💊", budget: 150000,  spent: 80000  },
-      { category: "기타",       icon: "📦", budget: 300000,  spent: 280000 }
-    ]
-  },
-  // 자산/부채 현황
-  netWorth: {
-    current: { totalAssets: 55000000, totalDebt: 15600000 },
-    history: [
-      { month: "2025-01", totalAssets: 54200000, totalDebt: 15600000 },
-      { month: "2025-02", totalAssets: 54100000, totalDebt: 15550000 },
-      { month: "2025-03", totalAssets: 55400000, totalDebt: 15500000 },
-      { month: "2025-04", totalAssets: 54900000, totalDebt: 15450000 },
-      { month: "2025-05", totalAssets: 55700000, totalDebt: 15400000 },
-      { month: "2025-06", totalAssets: 55200000, totalDebt: 15350000 },
-      { month: "2025-07", totalAssets: 56300000, totalDebt: 15600000 },
-      { month: "2025-08", totalAssets: 55000000, totalDebt: 15600000 }
-    ]
-  }
-};
-
 async function loadData(){
-  // 홈 대시보드는 다음 단계에서 Firebase 데이터로 전환합니다. 지금은 샘플로 표시.
-  return JSON.parse(JSON.stringify(SAMPLE_DATA));
+  // 홈 대시보드는 목업 없이 전적으로 Firebase 라이브 스토어에서 계산합니다.
+  // 여기서는 "조회 연/월" 같은 화면 설정만 만듭니다. (실제 오늘 날짜 기준)
+  const d  = new Date();
+  const y  = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return {
+    meta: {
+      year: y,
+      asOfDate: `${y}-${mm}-${dd}`,
+      selectedMonth: `${y}-${mm}`
+    }
+  };
 }
 
 /* =====================================================================
@@ -1350,14 +1312,25 @@ let DATA = null;
 let selMonth = null;
 const charts = {};
 
-/* 홈 대시보드의 자산/부채 계산용 라이브 데이터 (null = 아직 로드 전 → 샘플 사용) */
-let homeAccounts = null;   // accounts 스토어
-let homeLoans = null;      // loans 스토어
+/* 홈 대시보드는 아래 라이브 스토어에서만 계산한다 (목업 없음).
+   homeTx: transactions · homeAccounts: accounts · homeLoans: loans · homeRecurring: recurringItems
+   (budgetItems: categoryBudgets 는 전역 구독) */
+let homeTx = [];
+let homeAccounts = [];
+let homeLoans = [];
+let homeRecurring = [];
 const homeVisible = () => document.getElementById("view-home").style.display !== "none";
 
+/* "YYYY-MM" → 그 달 말일 ISO (대출 잔액을 월별로 계산할 때 기준일) */
+function endOfMonthISO(m){
+  const [y, mo] = m.split("-").map(Number);
+  const last = new Date(y, mo, 0).getDate();
+  return `${m}-${String(last).padStart(2, "0")}`;
+}
+
 function render(){
-  const cf   = DATA.cashflow || {};
-  const year = DATA.meta.year;
+  if (!DATA) return;
+  const year   = DATA.meta.year;
   const months = yearMonths(year);
 
   /* ---- 헤더 ---- */
@@ -1365,36 +1338,53 @@ function render(){
     `${year}년 ${monthNo(selMonth)}월 · 우리 집 재무 현황 <span class="heart">♥</span>`;
   document.getElementById("asOfDate").textContent = asOfText(DATA.meta.asOfDate);
 
-  /* ---- KPI ---- */
-  const cur = cf[selMonth];
-  const remain = cur ? cur.income - cur.expense : null;
-
-  const bud = (DATA.budgets && DATA.budgets[selMonth]) || [];
-  const budTotal = bud.reduce((s,b)=> s + (b.budget||0), 0);
-  const budSpent = bud.reduce((s,b)=> s + (b.spent ||0), 0);
-  const budUse = budTotal ? budSpent / budTotal * 100 : null;
-
+  /* ===== 거래입력(transactions) → 월별 현금흐름 집계 ===== */
+  const cf = {};
+  months.forEach(m => cf[m] = { income: 0, expense: 0, saving: 0, count: 0 });
+  homeTx.forEach(t => {
+    const m = (t.date || "").slice(0, 7);
+    if (cf[m] && (t.type === "income" || t.type === "expense" || t.type === "saving")){
+      cf[m][t.type] += num(t.amount);
+      cf[m].count++;
+    }
+  });
+  const cur = cf[selMonth] || { income: 0, expense: 0, saving: 0, count: 0 };
+  const remain = cur.income - cur.expense;
   let cumSaving = 0;
-  months.forEach(m => { if (m <= selMonth && cf[m]) cumSaving += cf[m].saving || 0; });
+  months.forEach(m => { if (m <= selMonth) cumSaving += cf[m].saving; });
 
-  /* 총자산 = 자산·계좌 잔액 합계, 총부채 = 대출 관리의 현재잔액 합계.
-     아직 두 스토어 모두 로드 전이면 샘플 값으로 표시. */
-  const liveLoaded = homeAccounts !== null || homeLoans !== null;
-  const totalAssets = liveLoaded
-    ? (homeAccounts || []).reduce((s, a) => s + num(a.balance), 0)
-    : DATA.netWorth.current.totalAssets;
-  const totalDebt = liveLoaded
-    ? (homeLoans || []).reduce((s, l) => s + computeLoan(l, todayISO()).balance, 0)
-    : DATA.netWorth.current.totalDebt;
-  const debtHealth = totalAssets ? totalDebt / totalAssets * 100 : 0;
+  /* ===== 설정(categoryBudgets) + 이번 달 지출 → 예산 사용률 ===== */
+  const bMap = budgetMap();
+  const spentByCat = {};
+  homeTx.filter(t => t.type === "expense" && (t.date || "").slice(0, 7) === selMonth)
+    .forEach(t => {
+      const c = BUDGET_CATS.includes(t.category) ? t.category : "기타";
+      spentByCat[c] = (spentByCat[c] || 0) + num(t.amount);
+    });
+  const budTotal = totalMonthlyBudget();
+  const budSpent = BUDGET_CATS.reduce((s, c) => s + (spentByCat[c] || 0), 0);
+  const budUse   = budTotal ? budSpent / budTotal * 100 : null;
+
+  /* ===== 자산·계좌(accounts) / 대출 관리(loans) → 총자산·총부채·순자산 ===== */
+  const today = todayISO();
+  const totalAssets = homeAccounts.reduce((s, a) => s + num(a.balance), 0);
+  const totalDebt   = homeLoans.reduce((s, l) => s + computeLoan(l, today).balance, 0);
+  const debtHealth  = totalAssets ? totalDebt / totalAssets * 100 : 0;
   const netWorthVal = totalAssets - totalDebt;
 
+  /* ===== 고정비 관리(recurringItems) → 이번 달 고정 지출 예정 ===== */
+  const fixedMonthly = homeRecurring
+    .filter(i => i.active !== false)
+    .reduce((s, i) => s + num(i.amount), 0);
+
+  /* ---- KPI ---- */
   const kpiData = [
-    { cls:"blue",  ic:"👛", label:"이번 달 잔여금", value: remain==null? "-" : wonS(remain), note:"수입 − 지출" },
-    { cls:"mint",  ic:"📊", label:"예산 사용률",    value: budUse==null? "-" : fmtPct(budUse), note:"예산 대비 지출" },
-    { cls:"cream", ic:"🐷", label:"올해 누적 저축",  value: wonS(cumSaving), note:"월별 저축 합계" },
-    { cls:"pink",  ic:"%", label:"우리 집 채무 체력", value: fmtPct(debtHealth), note:"부채 ÷ 총자산" },
-    { cls:"lav",   ic:"📈", label:"순자산",          value: wonS(netWorthVal), note:"총자산 − 총부채" }
+    { cls:"blue",  ic:"👛", label:"이번 달 잔여금",   value: wonS(remain),       note:`${monthNo(selMonth)}월 수입 − 지출` },
+    { cls:"mint",  ic:"📊", label:"예산 사용률",      value: budUse==null ? "-" : fmtPct(budUse), note: budTotal ? "예산 대비 이번 달 지출" : "설정에서 예산을 입력하세요" },
+    { cls:"cream", ic:"🐷", label:"올해 누적 저축",    value: wonS(cumSaving),    note:`1~${monthNo(selMonth)}월 저축 합계` },
+    { cls:"sky",   ic:"🔁", label:"고정비·정기결제",   value: wonS(fixedMonthly), note:"활성 항목 월 합계" },
+    { cls:"pink",  ic:"%",  label:"우리 집 채무 체력", value: fmtPct(debtHealth), note:"총부채 ÷ 총자산" },
+    { cls:"lav",   ic:"📈", label:"순자산",           value: wonS(netWorthVal),  note:"총자산 − 총부채" }
   ];
   document.getElementById("kpis").innerHTML = kpiData.map(k => `
     <div class="kpi ${k.cls}">
@@ -1410,7 +1400,7 @@ function render(){
   document.getElementById("cashflowBody").innerHTML = months.map(m => {
     const r = cf[m];
     const sel = m === selMonth ? " is-selected" : "";
-    if (!r) return `<tr class="muted${sel}"><td>${mLabel(m)}</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>`;
+    if (!r.count) return `<tr class="muted${sel}"><td>${mLabel(m)}</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>`;
     const rem = r.income - r.expense - r.saving;
     return `<tr class="${sel.trim()}">
       <td>${mLabel(m)}</td>
@@ -1422,77 +1412,89 @@ function render(){
   }).join("");
 
   /* ---- CASH FLOW 차트 ---- */
-  const labels = months.map(mLabel);
-  const pick = key => months.map(m => cf[m] ? cf[m][key] : null);
-  const remainArr = months.map(m => cf[m] ? cf[m].income - cf[m].expense - cf[m].saving : null);
+  const pick = key => months.map(m => cf[m].count ? cf[m][key] : null);
   drawLine("cashflowChart", {
-    labels,
+    labels: months.map(mLabel),
     datasets: [
-      lineDS("수입", pick("income"),  "#5b8def"),
-      lineDS("지출", pick("expense"), "#ef7a72"),
-      lineDS("저축", pick("saving"),  "#5fb27a"),
-      lineDS("잔여금", remainArr,      "#f0b429")
+      lineDS("수입",  pick("income"),  "#5b8def"),
+      lineDS("지출",  pick("expense"), "#ef7a72"),
+      lineDS("저축",  pick("saving"),  "#5fb27a"),
+      lineDS("잔여금", months.map(m => cf[m].count ? cf[m].income - cf[m].expense - cf[m].saving : null), "#f0b429")
     ]
   });
 
   /* ---- BUDGET 표 + 도넛 ---- */
   const tbody = document.getElementById("budgetBody");
   const tfoot = document.getElementById("budgetFoot");
-  if (!bud.length){
-    tbody.innerHTML = `<tr class="muted"><td colspan="5" style="text-align:center;padding:24px">이 달의 예산 데이터가 없습니다.</td></tr>`;
+  const budCats = BUDGET_CATS.filter(c => (bMap[c] || 0) > 0 || (spentByCat[c] || 0) > 0);
+
+  if (!budCats.length){
+    tbody.innerHTML = `<tr class="muted"><td colspan="5" style="text-align:center;padding:24px">
+      아직 예산·지출이 없습니다. <b>설정</b>에서 예산을, <b>거래입력</b>에서 지출을 기록해 보세요.</td></tr>`;
     tfoot.innerHTML = "";
   } else {
-    tbody.innerHTML = bud.map(b => {
-      const use = b.budget ? b.spent / b.budget * 100 : 0;
-      const rem = b.budget - b.spent;
+    tbody.innerHTML = budCats.map(c => {
+      const b = bMap[c] || 0, sp = spentByCat[c] || 0;
+      const use = b ? sp / b * 100 : 0;
+      const rem = b - sp;
       return `<tr>
-        <td class="cat"><div class="cat-cell"><span class="emoji">${b.icon||"•"}</span>${b.category}</div></td>
-        <td>${won(b.budget)}</td>
-        <td>${won(b.spent)}</td>
+        <td class="cat"><div class="cat-cell"><span class="emoji">${CAT_ICONS[c] || "•"}</span>${c}</div></td>
+        <td>${b ? won(b) : "-"}</td>
+        <td>${won(sp)}</td>
         <td>
           <div class="bar-wrap">
-            <div class="bar"><span style="width:${Math.min(use,100)}%;background:${barColor(use)}"></span></div>
-            <span class="pctv">${fmtPct(use)}</span>
+            <div class="bar"><span style="width:${b ? Math.min(use,100) : 0}%;background:${barColor(use)}"></span></div>
+            <span class="pctv">${b ? fmtPct(use) : "-"}</span>
           </div>
         </td>
-        <td>${won(rem)}</td>
+        <td${(b && rem < 0) ? ' style="color:var(--coral);font-weight:700"' : ""}>${b ? won(rem) : "-"}</td>
       </tr>`;
     }).join("");
     tfoot.innerHTML = `<tr>
       <td>합계</td>
       <td>${won(budTotal)}</td>
       <td>${won(budSpent)}</td>
-      <td style="text-align:right">${fmtPct(budUse)}</td>
-      <td>${won(budTotal - budSpent)}</td>
+      <td style="text-align:right">${budTotal ? fmtPct(budUse) : "-"}</td>
+      <td${(budTotal && budTotal - budSpent < 0) ? ' style="color:var(--coral);font-weight:700"' : ""}>${budTotal ? won(budTotal - budSpent) : "-"}</td>
     </tr>`;
   }
 
   document.getElementById("donutLabel").textContent = `${monthNo(selMonth)}월 지출 합계`;
   document.getElementById("donutValue").textContent = wonS(budSpent);
-  drawDonut("budgetDonut", bud.map(b=>b.category), bud.map(b=>b.spent));
+  const donutCats = budCats.filter(c => (spentByCat[c] || 0) > 0);
+  drawDonut("budgetDonut", donutCats, donutCats.map(c => spentByCat[c]));
 
-  /* ---- 자산/부채/순자산 ---- */
+  /* ---- 자산 / 부채 / 순자산 ---- */
   document.getElementById("nwAssets").textContent = won(totalAssets);
   document.getElementById("nwDebt").textContent   = won(totalDebt);
   document.getElementById("nwNet").textContent    = won(netWorthVal);
 
-  // 과거 추이는 샘플, 마지막(현재) 점은 실제 합계로 대체
-  const hist = (DATA.netWorth.history || []).map(h => ({ ...h }));
-  if (liveLoaded && hist.length){
-    hist[hist.length - 1] = { month: hist[hist.length - 1].month, totalAssets, totalDebt };
-  }
+  /* 대출 잔액: 상환 스케줄로 월별 실계산 · 누적 저축: 거래입력에서 집계 (둘 다 실데이터) */
+  const debtSeries = months.map(m => {
+    const asOf = endOfMonthISO(m);
+    return homeLoans.reduce((s, l) =>
+      (l.startDate && asOf < l.startDate) ? s : s + computeLoan(l, asOf).balance, 0);
+  });
+  let cs = 0;
+  const savingSeries = months.map(m => { cs += cf[m].saving; return cs; });
   drawLine("netWorthChart", {
-    labels: hist.map(h => mLabel(h.month)),
+    labels: months.map(mLabel),
     datasets: [
-      lineDS("총자산", hist.map(h=>h.totalAssets), "#5fb27a"),
-      lineDS("총부채", hist.map(h=>h.totalDebt),   "#ef7a72"),
-      lineDS("순자산", hist.map(h=>h.totalAssets - h.totalDebt), "#5b8def")
+      lineDS("대출 잔액", debtSeries,   "#ef7a72"),
+      lineDS("누적 저축", savingSeries, "#5fb27a")
     ]
   });
 
-  /* ---- 메모 ---- */
-  const memo = (DATA.meta.memos && DATA.meta.memos[selMonth]) || "이번 달도 알뜰하게 관리해요!";
-  document.getElementById("memoText").textContent = memo;
+  /* ---- 메모 (데이터 기반) ---- */
+  const memoEl = document.getElementById("memoText");
+  if (budTotal && budSpent > budTotal)
+    memoEl.textContent = `이번 달 예산을 ${wonS(budSpent - budTotal)} 초과했어요. 남은 기간 지출을 조절해 봐요!`;
+  else if (cur.count && remain < 0)
+    memoEl.textContent = `이번 달은 지출이 수입보다 많아요. 고정비부터 점검해 볼까요?`;
+  else if (cur.count)
+    memoEl.textContent = `이번 달 잔여금 ${wonS(remain)} · 이대로 꾸준히 관리해요!`;
+  else
+    memoEl.textContent = `${monthNo(selMonth)}월 거래를 '거래입력'에 기록하면 여기 현황이 채워집니다.`;
 }
 
 /* ---- 차트 헬퍼 ---- */
@@ -2521,6 +2523,7 @@ function onBudgetsChanged(){
   if (isVisible("view-settings")) paintSettings();
   if (yrSubscribed && isVisible("view-year")) paintYear();
   if (txSubscribed && isVisible("view-tx")) paintTx();
+  if (DATA && homeVisible()) render();
 }
 
 function renderSettings(){
@@ -2956,9 +2959,11 @@ async function init(){
   wireCalendarPage();
   render();
 
-  // 홈 대시보드의 총자산/총부채/순자산을 실제 데이터로 계산
-  store.subscribe(AS_PATH, items => { homeAccounts = items; if (homeVisible()) render(); });
-  store.subscribe(LN_PATH, items => { homeLoans = items;    if (homeVisible()) render(); });
+  // 홈 대시보드 — 모든 카드를 거래입력·자산·계좌·대출·고정비 라이브 데이터로 계산
+  store.subscribe(TX_PATH, items => { homeTx = items;        if (homeVisible()) render(); });
+  store.subscribe(AS_PATH, items => { homeAccounts = items;  if (homeVisible()) render(); });
+  store.subscribe(LN_PATH, items => { homeLoans = items;     if (homeVisible()) render(); });
+  store.subscribe(FX_PATH, items => { homeRecurring = items; if (homeVisible()) render(); });
 
   // 카테고리별 월 예산 — 앱 전역에서 사용률 계산에 사용
   store.subscribe(BUD_PATH, items => { budgetItems = items; onBudgetsChanged(); });
